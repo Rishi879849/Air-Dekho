@@ -1,0 +1,2530 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AIR DEKHO — Your Health Is Our Priority</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;0,800;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Firebase SDK (v10 compat CDN — works in plain HTML) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Rajdhani', 'sans-serif'],
+            body: ['Exo 2', 'sans-serif'],
+            mono: ['Share Tech Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --aqi-good: #22c55e;
+      --aqi-satisfactory: #a3e635;
+      --aqi-moderate: #facc15;
+      --aqi-poor: #f97316;
+      --aqi-very-poor: #ef4444;
+      --aqi-severe: #7c3aed;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Exo 2', sans-serif;
+      transition: background-color 0.4s ease, color 0.4s ease;
+    }
+
+    /* ---- SCROLLBAR ---- */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #16a34a; border-radius: 3px; }
+
+    /* ---- NAVBAR GLASS ---- */
+    .glass-nav {
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(255,255,255,0.3);
+    }
+    .dark .glass-nav {
+      background: rgba(10,20,15,0.78);
+      border-bottom: 1px solid rgba(34,197,94,0.15);
+    }
+
+    /* ---- HERO BG ---- */
+    .hero-bg {
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 30%, #bbf7d0 60%, #86efac 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .dark .hero-bg {
+      background: linear-gradient(135deg, #020c06 0%, #041a0d 40%, #062914 70%, #083d1e 100%);
+    }
+    .hero-bg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2322c55e' fill-opacity='0.06'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    /* ---- PARTICLE BLOBS ---- */
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.25;
+      animation: blobFloat 8s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .dark .blob { opacity: 0.18; }
+    @keyframes blobFloat {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-30px) scale(1.06); }
+    }
+
+    /* ---- CARDS ---- */
+    .card {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.6);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.4s ease;
+    }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 20px 50px rgba(0,0,0,0.10); }
+    .dark .card {
+      background: rgba(6,30,18,0.75);
+      border: 1px solid rgba(34,197,94,0.12);
+    }
+    .dark .card:hover { box-shadow: 0 20px 50px rgba(34,197,94,0.08); }
+
+    /* ---- AQI GAUGE ---- */
+    .gauge-container { position: relative; width: 280px; height: 165px; margin: 0 auto; }
+    .gauge-svg { width: 100%; height: 100%; }
+    .gauge-needle {
+      transform-origin: 50% 100%;
+      transform: rotate(-90deg);
+      transition: transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .gauge-value {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      transition: color 0.6s ease;
+    }
+
+    /* ---- TOGGLE SWITCH ---- */
+    .toggle-track {
+      width: 52px; height: 28px;
+      background: #d1d5db;
+      border-radius: 14px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    .dark .toggle-track { background: #16a34a; }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 22px; height: 22px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s ease;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+    }
+    .dark .toggle-thumb { transform: translateX(24px); }
+
+    /* ---- AREA PILLS ---- */
+    .area-pill {
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 2px solid transparent;
+    }
+    .area-pill:hover { transform: scale(1.03); }
+    .area-pill.active { border-color: currentColor; box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
+
+    /* ---- TOAST ---- */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      transform: translateY(120px);
+      opacity: 0;
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ---- SECTION FADE-IN ---- */
+    .fade-in { opacity: 0; transform: translateY(28px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+    /* ---- DISEASE CARD HOVER ---- */
+    .disease-card { transition: all 0.3s ease; }
+    .disease-card:hover .disease-icon { transform: scale(1.18) rotate(-5deg); }
+    .disease-icon { transition: transform 0.3s ease; }
+
+    /* ---- AQI BAR ---- */
+    .aqi-bar-fill { transition: width 1s cubic-bezier(0.25, 1, 0.5, 1); }
+
+    /* ---- PROGRESS RING ---- */
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .spin-slow { animation: spin-slow 12s linear infinite; }
+
+    /* ---- CTA BANNER ---- */
+    .go-green-banner {
+      background: linear-gradient(135deg, #14532d 0%, #166534 40%, #15803d 70%, #16a34a 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .go-green-banner::after {
+      content: 'GO GREEN GWALIOR';
+      position: absolute;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 9rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.04);
+      white-space: nowrap;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      letter-spacing: 0.05em;
+    }
+
+    /* ---- SECTION HEADINGS ---- */
+    .section-heading {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    /* ---- REPORT FORM ---- */
+    .form-control {
+      background: rgba(255,255,255,0.7);
+      border: 1.5px solid #d1d5db;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.4s;
+    }
+    .dark .form-control {
+      background: rgba(6,30,18,0.6);
+      border-color: rgba(34,197,94,0.25);
+      color: #e2f5ea;
+    }
+    .form-control:focus {
+      outline: none;
+      border-color: #16a34a;
+      box-shadow: 0 0 0 3px rgba(22,163,74,0.18);
+    }
+
+    /* ---- LIGHT THEME SECTION ALTERNATION ---- */
+    .section-alt { background: #f0fdf4; }
+    .dark .section-alt { background: rgba(4,18,10,0.9); }
+
+    /* ---- NAV LINK ---- */
+    .nav-link {
+      position: relative;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: #16a34a;
+      transition: width 0.25s ease;
+    }
+    .nav-link:hover::after { width: 100%; }
+
+    /* AQI level label */
+    .aqi-label-badge {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ---- LIVE MAP ---- */
+    #liveAqiMap { width:100%; height:360px; z-index:1; }
+    .leaflet-container { font-family: 'Exo 2', sans-serif; }
+    .aqi-pin { display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+    .aqi-pin-dot {
+      width:38px; height:38px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-family:'Rajdhani',sans-serif; font-weight:700; font-size:11px; color:#fff;
+      border:2.5px solid rgba(255,255,255,0.85);
+      box-shadow:0 2px 12px rgba(0,0,0,0.35);
+      position:relative; z-index:2;
+      transition:transform 0.2s ease;
+    }
+    .aqi-pin-dot:hover { transform:scale(1.15); }
+    .aqi-pin-pulse {
+      position:absolute; top:-6px; left:-6px;
+      width:50px; height:50px; border-radius:50%;
+      opacity:0; animation:aqiPulse 2.4s ease-out infinite;
+    }
+    @keyframes aqiPulse { 0%{transform:scale(0.7);opacity:0.7} 100%{transform:scale(1.9);opacity:0} }
+    .aqi-pin-name {
+      margin-top:3px; background:rgba(0,0,0,0.72); color:#fff;
+      font-family:'Rajdhani',sans-serif; font-weight:600; font-size:9.5px;
+      padding:1px 5px; border-radius:4px; white-space:nowrap; letter-spacing:0.04em;
+    }
+    .map-layer-toggle { position:absolute; top:12px; right:12px; z-index:500; display:flex; gap:6px; }
+    .map-layer-btn {
+      padding:5px 12px; border-radius:8px;
+      font-family:'Rajdhani',sans-serif; font-weight:600; font-size:11px;
+      letter-spacing:0.06em; text-transform:uppercase; cursor:pointer;
+      border:1.5px solid rgba(255,255,255,0.5);
+      background:rgba(10,20,14,0.82); color:#fff;
+      backdrop-filter:blur(8px); transition:all 0.2s ease;
+    }
+    .map-layer-btn.active { background:#16a34a; border-color:#22c55e; }
+    .map-live-badge {
+      position:absolute; bottom:12px; left:12px; z-index:500;
+      background:rgba(10,20,14,0.82); backdrop-filter:blur(8px);
+      border:1px solid rgba(34,197,94,0.4); border-radius:8px;
+      padding:5px 10px; display:flex; align-items:center; gap:6px;
+      font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:600;
+      letter-spacing:0.06em; color:#86efac; text-transform:uppercase;
+    }
+    .map-live-dot { width:7px; height:7px; border-radius:50%; background:#22c55e; animation:liveDotBlink 1.2s ease-in-out infinite; }
+    @keyframes liveDotBlink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+    .leaflet-popup-content-wrapper {
+      background:rgba(10,20,14,0.93)!important; border:1px solid rgba(34,197,94,0.3)!important;
+      border-radius:12px!important; box-shadow:0 8px 32px rgba(0,0,0,0.5)!important; color:#e2f5ea!important;
+    }
+    .leaflet-popup-tip { background:rgba(10,20,14,0.93)!important; }
+    .leaflet-popup-content { margin:10px 14px!important; }
+    .map-popup-title { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; color:#fff; }
+    .map-popup-aqi { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:28px; line-height:1; }
+    .map-popup-label { font-family:'Share Tech Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; opacity:0.7; }
+    .map-popup-bar { height:4px; border-radius:2px; background:linear-gradient(to right,#22c55e,#facc15,#f97316,#ef4444,#7c3aed); margin-top:6px; position:relative; }
+    .map-popup-bar-thumb { position:absolute; top:-3px; width:10px; height:10px; border-radius:50%; background:#fff; border:2px solid #16a34a; transform:translateX(-50%); }
+  </style>
+</head>
+
+<body class="bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-100 transition-colors duration-300">
+
+<!-- ==============================
+     NAVBAR
+============================== -->
+<nav class="glass-nav fixed top-0 inset-x-0 z-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+      <!-- Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-md">
+          <i class="fa-solid fa-wind text-white text-sm"></i>
+        </div>
+        <div>
+          <div class="font-display font-bold text-xl leading-none text-gray-900 dark:text-white">AIR DEKHO</div>
+          <div class="text-xs text-green-600 dark:text-green-400 font-body leading-none tracking-wide">Your Health Is Our Priority</div>
+        </div>
+      </div>
+
+      <!-- Desktop Nav Links -->
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#aqi-map" class="nav-link text-gray-700 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400">AQI Map</a>
+        <a href="#report" class="nav-link text-gray-700 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400">Report</a>
+        <a href="#health" class="nav-link text-gray-700 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400">Health</a>
+        <a href="#advice" class="nav-link text-gray-700 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400">Advice</a>
+        <a href="#dos-donts" class="nav-link text-gray-700 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400">Do's &amp; Don'ts</a>
+      </div>
+
+      <!-- Theme Toggle + Mobile Btn -->
+      <div class="flex items-center gap-4">
+        <!-- Dark mode toggle -->
+        <button onclick="toggleTheme()" aria-label="Toggle theme" class="toggle-track" id="themeToggle">
+          <div class="toggle-thumb" id="toggleThumb">
+            <i class="fa-solid fa-sun text-yellow-400" id="toggleIcon"></i>
+          </div>
+        </button>
+        <!-- Mobile menu -->
+        <button class="md:hidden text-gray-600 dark:text-gray-300" onclick="toggleMobileMenu()" aria-label="Menu">
+          <i class="fa-solid fa-bars text-xl" id="mobileMenuIcon"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- Mobile Menu -->
+  <div id="mobileMenu" class="hidden md:hidden px-4 pb-4 pt-2 space-y-2 border-t border-gray-100 dark:border-gray-800">
+    <a href="#aqi-map" onclick="closeMobileMenu()" class="block py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 font-display uppercase tracking-wide">AQI Map</a>
+    <a href="#report" onclick="closeMobileMenu()" class="block py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 font-display uppercase tracking-wide">Report</a>
+    <a href="#health" onclick="closeMobileMenu()" class="block py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 font-display uppercase tracking-wide">Health</a>
+    <a href="#advice" onclick="closeMobileMenu()" class="block py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 font-display uppercase tracking-wide">Advice</a>
+    <a href="#dos-donts" onclick="closeMobileMenu()" class="block py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 font-display uppercase tracking-wide">Do's &amp; Don'ts</a>
+  </div>
+</nav>
+
+<!-- ==============================
+     HERO SECTION
+============================== -->
+<section class="hero-bg pt-24 pb-20 px-4 min-h-[92vh] flex items-center">
+  <!-- Decorative Blobs -->
+  <div class="blob w-72 h-72 bg-green-400 top-10 -left-20" style="animation-delay:0s;"></div>
+  <div class="blob w-96 h-96 bg-emerald-300 bottom-0 right-0" style="animation-delay:2.5s;"></div>
+  <div class="blob w-48 h-48 bg-teal-400 top-1/2 left-1/2" style="animation-delay:5s;"></div>
+
+  <div class="max-w-7xl mx-auto w-full relative z-10">
+    <div class="grid lg:grid-cols-2 gap-16 items-center">
+      <!-- Left: Hero text -->
+      <div class="space-y-8">
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-100 dark:bg-green-900/40 border border-green-200 dark:border-green-700">
+          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span class="text-green-700 dark:text-green-400 text-sm font-semibold font-display tracking-wide uppercase">Live Monitoring · Gwalior</span>
+        </div>
+
+        <h1 class="font-display font-bold leading-none">
+          <span class="text-6xl sm:text-7xl lg:text-8xl text-gray-900 dark:text-white block">AIR</span>
+          <span class="text-6xl sm:text-7xl lg:text-8xl text-green-600 dark:text-green-400 block">DEKHO</span>
+        </h1>
+
+        <p class="text-xl text-gray-600 dark:text-gray-400 max-w-lg font-body leading-relaxed">
+          Real-time air quality monitoring for every neighbourhood in <strong class="text-gray-800 dark:text-gray-200">Gwalior</strong>. Know before you go. Breathe safe, live healthy.
+        </p>
+
+        <div class="flex flex-wrap gap-4">
+          <a href="#aqi-map" class="inline-flex items-center gap-2 px-7 py-3.5 bg-green-600 hover:bg-green-700 text-white font-display font-semibold rounded-xl shadow-lg shadow-green-600/30 transition-all hover:scale-105 hover:shadow-green-600/40 uppercase tracking-wide">
+            <i class="fa-solid fa-map-location-dot"></i> Check Your Area
+          </a>
+          <a href="#report" class="inline-flex items-center gap-2 px-7 py-3.5 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 text-gray-800 dark:text-white font-display font-semibold rounded-xl shadow border border-gray-200 dark:border-gray-600 transition-all hover:scale-105 uppercase tracking-wide">
+            <i class="fa-solid fa-pen-to-square text-green-600"></i> Report AQI
+          </a>
+        </div>
+
+        <!-- Quick Stats Row -->
+        <div class="grid grid-cols-3 gap-4 pt-4">
+          <div class="card rounded-2xl p-4 text-center">
+            <div class="text-3xl font-display font-bold text-green-600" id="heroStatAreas">14</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-body">Areas Monitored</div>
+          </div>
+          <div class="card rounded-2xl p-4 text-center">
+            <div class="text-3xl font-display font-bold text-orange-500" id="heroStatAvgAqi">--</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-body">City Avg AQI</div>
+          </div>
+          <div class="card rounded-2xl p-4 text-center">
+            <div class="text-3xl font-display font-bold text-red-500" id="heroStatReports">0</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-body">Reports Today</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Featured AQI Gauge -->
+      <div class="flex justify-center">
+        <div class="card rounded-3xl p-8 max-w-sm w-full shadow-2xl">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <div class="text-xs font-display uppercase tracking-widest text-gray-400 dark:text-gray-500">Selected Area</div>
+              <div class="font-display font-bold text-xl text-gray-900 dark:text-white" id="heroAreaName">City Center</div>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+              <i class="fa-solid fa-location-dot text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+          </div>
+
+          <!-- GAUGE -->
+          <div class="gauge-container">
+            <svg class="gauge-svg" viewBox="0 0 280 160" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" style="stop-color:#22c55e"/>
+                  <stop offset="25%" style="stop-color:#a3e635"/>
+                  <stop offset="45%" style="stop-color:#facc15"/>
+                  <stop offset="65%" style="stop-color:#f97316"/>
+                  <stop offset="82%" style="stop-color:#ef4444"/>
+                  <stop offset="100%" style="stop-color:#7c3aed"/>
+                </linearGradient>
+                <!-- Glow filter -->
+                <filter id="needleGlow">
+                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                  <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+
+              <!-- Track arc (background) -->
+              <path d="M 30 150 A 110 110 0 0 1 250 150" fill="none" stroke="#e5e7eb" stroke-width="18" stroke-linecap="round" class="dark:stroke-gray-700"/>
+
+              <!-- Coloured arc -->
+              <path d="M 30 150 A 110 110 0 0 1 250 150" fill="none" stroke="url(#gaugeGrad)" stroke-width="18" stroke-linecap="round" opacity="0.9"/>
+
+              <!-- Tick marks -->
+              <g stroke="#6b7280" stroke-width="1.5" opacity="0.5">
+                <!-- ticks at intervals -->
+                <line x1="140" y1="30" x2="140" y2="46" transform="rotate(-90,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="40" transform="rotate(-67.5,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="46" transform="rotate(-45,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="40" transform="rotate(-22.5,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="46" transform="rotate(0,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="40" transform="rotate(22.5,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="46" transform="rotate(45,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="40" transform="rotate(67.5,140,150)"/>
+                <line x1="140" y1="30" x2="140" y2="46" transform="rotate(90,140,150)"/>
+              </g>
+
+              <!-- Labels on arc -->
+              <text x="22" y="158" font-family="Rajdhani,sans-serif" font-size="10" fill="#22c55e" font-weight="700">0</text>
+              <text x="56" y="92" font-family="Rajdhani,sans-serif" font-size="9" fill="#a3e635" font-weight="600">50</text>
+              <text x="105" y="55" font-family="Rajdhani,sans-serif" font-size="9" fill="#facc15" font-weight="600">100</text>
+              <text x="160" y="55" font-family="Rajdhani,sans-serif" font-size="9" fill="#f97316" font-weight="600">200</text>
+              <text x="207" y="92" font-family="Rajdhani,sans-serif" font-size="9" fill="#ef4444" font-weight="600">300</text>
+              <text x="246" y="158" font-family="Rajdhani,sans-serif" font-size="9" fill="#7c3aed" font-weight="600">500</text>
+
+              <!-- Needle group -->
+              <g id="gaugeNeedle" class="gauge-needle" style="transform-origin: 140px 150px; transform: rotate(-90deg);">
+                <polygon points="140,55 136,150 144,150" fill="#1f2937" opacity="0.85" filter="url(#needleGlow)" class="dark:fill-gray-200"/>
+                <circle cx="140" cy="150" r="8" fill="#1f2937" class="dark:fill-gray-200"/>
+                <circle cx="140" cy="150" r="4" fill="#16a34a"/>
+              </g>
+            </svg>
+          </div>
+
+          <!-- AQI Value Display -->
+          <div class="text-center mt-2">
+            <div class="text-6xl font-display font-bold gauge-value" id="gaugeValueDisplay" style="color: #22c55e">72</div>
+            <div class="text-sm font-body text-gray-500 dark:text-gray-400 mt-1">AQI</div>
+            <div class="mt-3 inline-block px-5 py-1.5 rounded-full text-sm font-bold aqi-label-badge" id="gaugeLabel" style="background:#f0fdf4;color:#16a34a;">Satisfactory</div>
+          </div>
+
+          <!-- Area select quick -->
+          <div class="mt-5">
+            <select onchange="selectAreaFromDropdown(this.value)" id="heroAreaSelect"
+              class="w-full form-control rounded-xl px-4 py-3 text-sm font-body text-gray-800 dark:text-gray-200 cursor-pointer">
+              <option value="">— Select an Area —</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==============================
+     AQI MAP SECTION
+============================== -->
+<section id="aqi-map" class="section-alt py-20 px-4">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 fade-in">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-display font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-satellite-dish"></i> Live Data
+      </div>
+      <h2 class="section-heading text-4xl sm:text-5xl text-gray-900 dark:text-white mb-3">Gwalior AQI Monitor</h2>
+      <p class="text-gray-500 dark:text-gray-400 font-body max-w-xl mx-auto">Select any neighbourhood to check its current air quality index and health status.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 items-start">
+      <!-- Map + Area List Left Panel -->
+      <div class="space-y-6 fade-in">
+        <!-- Live Satellite AQI Map -->
+        <div class="card rounded-2xl overflow-hidden shadow-xl">
+          <div class="relative">
+            <div id="liveAqiMap"></div>
+            <!-- Layer toggle -->
+            <div class="map-layer-toggle">
+              <button class="map-layer-btn active" id="btnSatellite" onclick="setMapLayer('satellite')">🛰 Satellite</button>
+              <button class="map-layer-btn" id="btnStreet" onclick="setMapLayer('street')">🗺 Map</button>
+            </div>
+            <!-- Live badge -->
+            <div class="map-live-badge">
+              <div class="map-live-dot"></div>
+              <span id="mapLastUpdate">Scanning AQI…</span>
+            </div>
+          </div>
+          <div class="p-4 border-t border-gray-100 dark:border-gray-800">
+            <p class="text-xs text-gray-400 dark:text-gray-500 font-body flex items-center gap-1.5">
+              <i class="fa-solid fa-satellite text-green-500"></i>
+              Satellite view with live AQI heat-zones — click any marker for details. Data refreshes every 30s.
+            </p>
+          </div>
+        </div>
+
+        <!-- City Average Card -->
+        <div class="card rounded-2xl p-6 shadow-lg">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-display font-bold text-lg text-gray-900 dark:text-white">City Overview</h3>
+            <span class="text-xs text-gray-400 font-body">Updated just now</span>
+          </div>
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="rounded-xl p-3" style="background:rgba(34,197,94,0.1)">
+              <div class="font-display font-bold text-2xl text-green-600" id="cityGood">0</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-body">Good</div>
+            </div>
+            <div class="rounded-xl p-3" style="background:rgba(249,115,22,0.1)">
+              <div class="font-display font-bold text-2xl text-orange-500" id="cityModerate">0</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-body">Moderate</div>
+            </div>
+            <div class="rounded-xl p-3" style="background:rgba(239,68,68,0.1)">
+              <div class="font-display font-bold text-2xl text-red-500" id="cityPoor">0</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-body">Poor+</div>
+            </div>
+          </div>
+          <!-- AQI Scale Legend -->
+          <div class="mt-5">
+            <div class="flex rounded-full overflow-hidden h-3">
+              <div class="flex-1 bg-green-500"></div>
+              <div class="flex-1 bg-lime-400"></div>
+              <div class="flex-1 bg-yellow-400"></div>
+              <div class="flex-1 bg-orange-500"></div>
+              <div class="flex-1 bg-red-500"></div>
+              <div class="flex-1 bg-violet-700"></div>
+            </div>
+            <div class="flex justify-between text-xs text-gray-400 mt-1.5 font-mono">
+              <span>0</span><span>50</span><span>100</span><span>200</span><span>300</span><span>500</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Area Grid + Right Panel -->
+      <div class="fade-in" style="transition-delay:0.15s">
+        <div class="card rounded-2xl shadow-xl overflow-hidden">
+          <div class="p-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <h3 class="font-display font-bold text-lg text-gray-900 dark:text-white">
+              <i class="fa-solid fa-list-check text-green-500 mr-2"></i>Areas at a Glance
+            </h3>
+            <!-- Sort filter -->
+            <select onchange="sortAreas(this.value)" class="form-control text-xs rounded-lg px-3 py-1.5 font-body text-gray-700 dark:text-gray-300">
+              <option value="name">Sort: A-Z</option>
+              <option value="aqi-asc">AQI ↑ Low First</option>
+              <option value="aqi-desc">AQI ↓ High First</option>
+            </select>
+          </div>
+          <div id="areaList" class="divide-y divide-gray-100 dark:divide-gray-800 max-h-[520px] overflow-y-auto">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==============================
+     WEEKLY AQI REPORT SECTION
+============================== -->
+<section id="weekly-report" class="py-20 px-4 bg-white dark:bg-gray-950">
+  <div class="max-w-7xl mx-auto">
+
+    <!-- Heading -->
+    <div class="text-center mb-12 fade-in">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-display font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-chart-line"></i> Weekly Analysis
+      </div>
+      <h2 class="section-heading text-4xl sm:text-5xl text-gray-900 dark:text-white mb-3">Weekly AQI Report</h2>
+      <p class="text-gray-500 dark:text-gray-400 font-body max-w-xl mx-auto">7-day air quality trends, pollution breakdown, and area comparisons for Gwalior.</p>
+    </div>
+
+    <!-- Week selector + summary pills -->
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-8 fade-in">
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-display font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Week of</span>
+        <div class="card rounded-xl px-4 py-2 font-mono text-sm text-green-600 dark:text-green-400 font-semibold" id="weekLabel">—</div>
+      </div>
+      <div class="flex flex-wrap gap-3" id="weekSummaryPills">
+        <!-- JS fills these -->
+      </div>
+    </div>
+
+    <!-- Row 1: Line chart (full width) -->
+    <div class="card rounded-2xl p-6 shadow-xl mb-6 fade-in">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 class="font-display font-bold text-lg text-gray-900 dark:text-white">
+          <i class="fa-solid fa-chart-line text-green-500 mr-2"></i>Daily AQI Trend — Top Areas
+        </h3>
+        <div class="flex gap-2 flex-wrap" id="trendAreaToggle">
+          <!-- JS inserts toggle buttons -->
+        </div>
+      </div>
+      <div style="height:280px;position:relative;">
+        <canvas id="chartWeeklyTrend"></canvas>
+      </div>
+    </div>
+
+    <!-- Row 2: Bar + Doughnut side by side -->
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+
+      <!-- Bar: avg AQI by area this week -->
+      <div class="card rounded-2xl p-6 shadow-xl fade-in">
+        <h3 class="font-display font-bold text-lg text-gray-900 dark:text-white mb-4">
+          <i class="fa-solid fa-chart-bar text-orange-400 mr-2"></i>Avg AQI by Area This Week
+        </h3>
+        <div style="height:260px;position:relative;">
+          <canvas id="chartAreaAvg"></canvas>
+        </div>
+      </div>
+
+      <!-- Doughnut: AQI category distribution -->
+      <div class="card rounded-2xl p-6 shadow-xl fade-in">
+        <h3 class="font-display font-bold text-lg text-gray-900 dark:text-white mb-4">
+          <i class="fa-solid fa-chart-pie text-blue-400 mr-2"></i>AQI Category Distribution
+        </h3>
+        <div class="flex items-center gap-6">
+          <div style="height:220px;width:220px;flex-shrink:0;position:relative;">
+            <canvas id="chartDistribution"></canvas>
+          </div>
+          <div id="distLegend" class="space-y-2 text-sm font-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: Pollution heatmap (styled table) -->
+    <div class="card rounded-2xl p-6 shadow-xl fade-in">
+      <h3 class="font-display font-bold text-lg text-gray-900 dark:text-white mb-5">
+        <i class="fa-solid fa-table-cells text-violet-400 mr-2"></i>AQI Heatmap — Day × Area
+      </h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs font-mono" id="aqiHeatmap">
+          <!-- JS fills -->
+        </table>
+      </div>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-3 font-body">Colour intensity reflects AQI level. Tap any cell for exact value.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ==============================
+     REPORT SECTION
+============================== -->
+<section id="report" class="py-20 px-4 bg-white dark:bg-gray-950">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12 fade-in">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-display font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-users"></i> Crowdsourced
+      </div>
+      <h2 class="section-heading text-4xl sm:text-5xl text-gray-900 dark:text-white mb-3">Report Air Quality</h2>
+      <p class="text-gray-500 dark:text-gray-400 font-body max-w-xl mx-auto">Be a citizen scientist. Your reports help the entire Gwalior community breathe easier.</p>
+    </div>
+
+    <div class="grid md:grid-cols-5 gap-8 items-start">
+      <!-- Form -->
+      <div class="md:col-span-3 fade-in">
+        <div class="card rounded-3xl p-8 shadow-xl">
+          <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+            <i class="fa-solid fa-pen-nib text-green-500"></i> Submit Your Observation
+          </h3>
+          <div class="space-y-5">
+            <!-- Area Select -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 font-display uppercase tracking-wide">
+                <i class="fa-solid fa-location-dot text-green-500 mr-1"></i> Your Area
+              </label>
+              <select id="reportArea" class="form-control w-full rounded-xl px-4 py-3 font-body text-gray-800 dark:text-gray-200">
+                <option value="">— Select your area —</option>
+              </select>
+            </div>
+
+            <!-- Status -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 font-display uppercase tracking-wide">
+                <i class="fa-solid fa-cloud text-blue-400 mr-1"></i> Current Status
+              </label>
+              <div class="grid grid-cols-2 gap-3" id="statusOptions">
+                <label class="status-radio-label flex items-center gap-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:border-green-400 dark:hover:border-green-500 transition-colors">
+                  <input type="radio" name="airStatus" value="Clean" class="accent-green-500"/>
+                  <span class="text-2xl">😊</span>
+                  <div><div class="font-semibold font-display text-sm text-gray-800 dark:text-white">Clean</div><div class="text-xs text-gray-400 font-body">Fresh air</div></div>
+                </label>
+                <label class="status-radio-label flex items-center gap-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:border-yellow-400 dark:hover:border-yellow-500 transition-colors">
+                  <input type="radio" name="airStatus" value="Dusty" class="accent-yellow-500"/>
+                  <span class="text-2xl">🌫️</span>
+                  <div><div class="font-semibold font-display text-sm text-gray-800 dark:text-white">Dusty</div><div class="text-xs text-gray-400 font-body">Particle matter</div></div>
+                </label>
+                <label class="status-radio-label flex items-center gap-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:border-orange-400 dark:hover:border-orange-500 transition-colors">
+                  <input type="radio" name="airStatus" value="Smoky" class="accent-orange-500"/>
+                  <span class="text-2xl">💨</span>
+                  <div><div class="font-semibold font-display text-sm text-gray-800 dark:text-white">Smoky</div><div class="text-xs text-gray-400 font-body">Smoke present</div></div>
+                </label>
+                <label class="status-radio-label flex items-center gap-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:border-red-400 dark:hover:border-red-500 transition-colors">
+                  <input type="radio" name="airStatus" value="Smelly" class="accent-red-500"/>
+                  <span class="text-2xl">🤢</span>
+                  <div><div class="font-semibold font-display text-sm text-gray-800 dark:text-white">Smelly</div><div class="text-xs text-gray-400 font-body">Foul odor</div></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Rating Slider -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 font-display uppercase tracking-wide">
+                <i class="fa-solid fa-gauge text-orange-400 mr-1"></i> Your AQI Estimate
+              </label>
+              <div class="flex items-center gap-4">
+                <input type="range" id="aqiSlider" min="0" max="500" value="75" step="5"
+                  oninput="updateSliderValue(this.value)"
+                  class="flex-1 h-2 rounded-lg appearance-none bg-gradient-to-r from-green-400 via-yellow-400 via-orange-400 to-red-500 cursor-pointer accent-green-500"/>
+                <div class="w-20 text-center">
+                  <div class="font-display font-bold text-2xl" id="sliderValueDisplay" style="color:#22c55e">75</div>
+                  <div class="text-xs text-gray-400 font-body">AQI</div>
+                </div>
+              </div>
+              <div class="mt-2 h-1.5 rounded-full w-full bg-gradient-to-r from-green-400 via-lime-300 via-yellow-400 via-orange-400 via-red-500 to-violet-700 opacity-50"></div>
+            </div>
+
+            <!-- Notes -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 font-display uppercase tracking-wide">
+                <i class="fa-solid fa-comment-dots text-gray-400 mr-1"></i> Additional Notes <span class="text-xs text-gray-400 normal-case">(optional)</span>
+              </label>
+              <textarea id="reportNotes" rows="3" placeholder="Describe what you observe — construction nearby? traffic fumes? burning waste?" class="form-control w-full rounded-xl px-4 py-3 font-body text-gray-800 dark:text-gray-200 resize-none placeholder-gray-400"></textarea>
+            </div>
+
+            <!-- Submit -->
+            <button id="submitBtn" onclick="submitReport()" class="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 text-white font-display font-bold text-lg rounded-xl shadow-lg shadow-green-600/30 transition-all hover:scale-[1.02] uppercase tracking-wide flex items-center justify-center gap-2">
+              <i class="fa-solid fa-paper-plane" id="submitBtnIcon"></i>
+              <span id="submitBtnText">Submit Report</span>
+            </button>
+
+            <!-- Firebase connection status -->
+            <div id="fbStatus" class="flex items-center justify-center gap-2 text-xs font-mono mt-1">
+              <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" id="fbStatusDot"></span>
+              <span id="fbStatusText" class="text-gray-400">Connecting to database…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Recent Reports -->
+      <div class="md:col-span-2 fade-in" style="transition-delay:0.2s">
+        <div class="card rounded-3xl p-6 shadow-xl h-full">
+          <h3 class="font-display font-bold text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-green-500"></i> Recent Reports
+            <span class="ml-auto text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-display uppercase tracking-wide flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Live
+            </span>
+          </h3>
+          <div id="recentReports" class="space-y-3">
+            <div class="text-center py-8 text-gray-400 dark:text-gray-600">
+              <i class="fa-solid fa-inbox text-3xl mb-2 block opacity-40"></i>
+              <p class="text-sm font-body">No reports yet. Be the first!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tips Card -->
+        <div class="card rounded-3xl p-6 shadow mt-6">
+          <h4 class="font-display font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-lightbulb text-yellow-400"></i> Reporting Tips
+          </h4>
+          <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400 font-body">
+            <li class="flex items-start gap-2"><i class="fa-solid fa-check text-green-500 mt-0.5 text-xs"></i> Report at the same time daily for best data</li>
+            <li class="flex items-start gap-2"><i class="fa-solid fa-check text-green-500 mt-0.5 text-xs"></i> Morning readings (6-9 AM) are most accurate</li>
+            <li class="flex items-start gap-2"><i class="fa-solid fa-check text-green-500 mt-0.5 text-xs"></i> Note any nearby construction or burning</li>
+            <li class="flex items-start gap-2"><i class="fa-solid fa-check text-green-500 mt-0.5 text-xs"></i> Your reports directly update the city dashboard</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==============================
+     HEALTH / DISEASES SECTION
+============================== -->
+<section id="health" class="section-alt py-20 px-4">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-14 fade-in">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-display font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-heart-pulse"></i> Health Risks
+      </div>
+      <h2 class="section-heading text-4xl sm:text-5xl text-gray-900 dark:text-white mb-3">Diseases Caused by Bad Air</h2>
+      <p class="text-gray-500 dark:text-gray-400 font-body max-w-2xl mx-auto">
+        Prolonged exposure to poor air quality silently damages your body. Know the risks. Protect your family.
+      </p>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Disease Cards -->
+      <div class="card disease-card rounded-2xl p-6 shadow-lg fade-in">
+        <div class="disease-icon text-5xl mb-4">🫁</div>
+        <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white mb-2">Asthma</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Fine particles and ozone trigger severe asthma attacks. Children are especially vulnerable. Even short exposures can cause lasting airway inflammation.</p>
+        <div class="mt-4 flex flex-wrap gap-1.5">
+          <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-semibold">PM2.5</span>
+          <span class="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold">Ozone</span>
+          <span class="px-2 py-0.5 rounded-full text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 font-semibold">SO₂</span>
+        </div>
+      </div>
+
+      <div class="card disease-card rounded-2xl p-6 shadow-lg fade-in" style="transition-delay:0.08s">
+        <div class="disease-icon text-5xl mb-4">🤧</div>
+        <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white mb-2">Chronic Bronchitis</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Long-term exposure to pollutants causes persistent cough, mucus production, and breathing difficulty. Smokers and elderly face highest risk in Gwalior's traffic-heavy zones.</p>
+        <div class="mt-4 flex flex-wrap gap-1.5">
+          <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-semibold">NOₓ</span>
+          <span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-semibold">Dust</span>
+        </div>
+      </div>
+
+      <div class="card disease-card rounded-2xl p-6 shadow-lg fade-in" style="transition-delay:0.16s">
+        <div class="disease-icon text-5xl mb-4">💔</div>
+        <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white mb-2">Cardiovascular Disease</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Air pollution accelerates plaque build-up in arteries, increasing risk of heart attack and stroke. Even moderate AQI levels raise blood pressure significantly over time.</p>
+        <div class="mt-4 flex flex-wrap gap-1.5">
+          <span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">PM2.5</span>
+          <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-semibold">CO</span>
+        </div>
+      </div>
+
+      <div class="card disease-card rounded-2xl p-6 shadow-lg fade-in" style="transition-delay:0.24s">
+        <div class="disease-icon text-5xl mb-4">👁️</div>
+        <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white mb-2">Eye Irritation & Damage</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Airborne pollutants cause redness, burning, and conjunctivitis. Chronic exposure can lead to corneal damage and increased risk of cataracts in later life.</p>
+        <div class="mt-4 flex flex-wrap gap-1.5">
+          <span class="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold">Ozone</span>
+          <span class="px-2 py-0.5 rounded-full text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 font-semibold">Smog</span>
+        </div>
+      </div>
+
+      <div class="card disease-card rounded-2xl p-6 shadow-lg fade-in" style="transition-delay:0.32s">
+        <div class="disease-icon text-5xl mb-4">🧠</div>
+        <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white mb-2">COPD</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Chronic Obstructive Pulmonary Disease causes irreversible lung damage. Gwalior's industrial emissions and vehicular pollution are major contributing factors to rising COPD rates.</p>
+        <div class="mt-4 flex flex-wrap gap-1.5">
+          <span class="px-2 py-0.5 rounded-full text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 font-semibold">PM10</span>
+          <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-semibold">NOₓ</span>
+        </div>
+      </div>
+
+      <div class="card disease-card rounded-2xl p-6 shadow-lg fade-in" style="transition-delay:0.40s">
+        <div class="disease-icon text-5xl mb-4">🤰</div>
+        <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white mb-2">Pregnancy Complications</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Exposure to high AQI during pregnancy links to premature birth, low birth weight, and developmental issues in children. Expectant mothers should closely monitor air quality alerts.</p>
+        <div class="mt-4 flex flex-wrap gap-1.5">
+          <span class="px-2 py-0.5 rounded-full text-xs bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 font-semibold">PM2.5</span>
+          <span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Pb</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk Level Banner -->
+    <div class="mt-10 card rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-5 fade-in">
+      <div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+        <i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl"></i>
+      </div>
+      <div>
+        <h4 class="font-display font-bold text-lg text-gray-900 dark:text-white mb-1">Who Is Most Vulnerable in Gwalior?</h4>
+        <p class="text-sm text-gray-600 dark:text-gray-400 font-body">Children under 12, elderly above 60, pregnant women, and those with pre-existing respiratory or cardiac conditions face the highest risks. On high AQI days, these groups should stay indoors and limit physical activity.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==============================
+     ADVICE SECTION
+============================== -->
+<section id="advice" class="py-20 px-4 bg-white dark:bg-gray-950">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-14 fade-in">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-display font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-shield-halved"></i> Protection Guide
+      </div>
+      <h2 class="section-heading text-4xl sm:text-5xl text-gray-900 dark:text-white mb-3">What To Do?</h2>
+      <p class="text-gray-500 dark:text-gray-400 font-body max-w-2xl mx-auto">
+        Actionable advice tailored to each AQI level. Simple steps that make a real difference for you and your loved ones.
+      </p>
+    </div>
+
+    <!-- AQI Level Tabs -->
+    <div class="flex flex-wrap justify-center gap-2 mb-10 fade-in" id="aqiTabs">
+      <button onclick="showAdvice('good')" class="aqi-tab-btn active px-5 py-2.5 rounded-full font-display font-semibold text-sm uppercase tracking-wide border-2 transition-all" data-level="good" style="border-color:#22c55e;color:#16a34a;background:rgba(34,197,94,0.1)">
+        <span class="w-2 h-2 rounded-full inline-block mr-1.5" style="background:#22c55e"></span>Good (0–50)
+      </button>
+      <button onclick="showAdvice('moderate')" class="aqi-tab-btn px-5 py-2.5 rounded-full font-display font-semibold text-sm uppercase tracking-wide border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 transition-all hover:border-yellow-400" data-level="moderate">
+        <span class="w-2 h-2 rounded-full inline-block mr-1.5 bg-yellow-400"></span>Moderate (51–100)
+      </button>
+      <button onclick="showAdvice('poor')" class="aqi-tab-btn px-5 py-2.5 rounded-full font-display font-semibold text-sm uppercase tracking-wide border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 transition-all hover:border-orange-400" data-level="poor">
+        <span class="w-2 h-2 rounded-full inline-block mr-1.5 bg-orange-500"></span>Poor (101–200)
+      </button>
+      <button onclick="showAdvice('verypoor')" class="aqi-tab-btn px-5 py-2.5 rounded-full font-display font-semibold text-sm uppercase tracking-wide border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 transition-all hover:border-red-400" data-level="verypoor">
+        <span class="w-2 h-2 rounded-full inline-block mr-1.5 bg-red-500"></span>Very Poor (201–300)
+      </button>
+      <button onclick="showAdvice('severe')" class="aqi-tab-btn px-5 py-2.5 rounded-full font-display font-semibold text-sm uppercase tracking-wide border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 transition-all hover:border-violet-500" data-level="severe">
+        <span class="w-2 h-2 rounded-full inline-block mr-1.5 bg-violet-600"></span>Severe (301+)
+      </button>
+    </div>
+
+    <!-- Advice Panel -->
+    <div id="advicePanel" class="fade-in">
+      <!-- JS renders content here -->
+    </div>
+
+    <!-- Always-on Green Actions -->
+    <div class="mt-12 fade-in">
+      <h3 class="section-heading text-2xl text-gray-900 dark:text-white mb-6 text-center">
+        🌱 Always-On Green Actions for Gwalior
+      </h3>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div class="card rounded-2xl p-5 text-center shadow">
+          <div class="text-4xl mb-3">🌳</div>
+          <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Plant Trees</h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 font-body">One tree absorbs ~21 kg CO₂ per year. Join Gwalior's Green Nagar campaign.</p>
+        </div>
+        <div class="card rounded-2xl p-5 text-center shadow">
+          <div class="text-4xl mb-3">🚗</div>
+          <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Carpool Daily</h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 font-body">Share rides with neighbours to reduce PM2.5 emissions by up to 45% per trip.</p>
+        </div>
+        <div class="card rounded-2xl p-5 text-center shadow">
+          <div class="text-4xl mb-3">🔥</div>
+          <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">No Open Burning</h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 font-body">Crop or waste burning is a major AQI spike cause. Compost instead of burning.</p>
+        </div>
+        <div class="card rounded-2xl p-5 text-center shadow">
+          <div class="text-4xl mb-3">⚡</div>
+          <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Go Electric</h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 font-body">Switch to EVs or CNG vehicles to drastically cut urban pollutant levels in Gwalior.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==============================
+     DO'S & DON'TS SECTION
+============================== -->
+<section id="dos-donts" class="section-alt py-20 px-4">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-14 fade-in">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-display font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-list-check"></i> Prevention Guide
+      </div>
+      <h2 class="section-heading text-4xl sm:text-5xl text-gray-900 dark:text-white mb-3">Do's &amp; Don'ts</h2>
+      <p class="text-gray-500 dark:text-gray-400 font-body max-w-2xl mx-auto">
+        Simple everyday actions that protect you from air pollution — and habits to break that make it worse for everyone in Gwalior.
+      </p>
+    </div>
+
+    <!-- Tab switcher -->
+    <div class="flex justify-center mb-10 fade-in">
+      <div class="inline-flex rounded-2xl p-1.5 bg-gray-100 dark:bg-gray-800 gap-1">
+        <button id="tabDos" onclick="switchDoDont('dos')"
+          class="px-8 py-2.5 rounded-xl font-display font-semibold text-sm uppercase tracking-wide transition-all bg-green-600 text-white shadow">
+          <i class="fa-solid fa-circle-check mr-1.5"></i> Do's
+        </button>
+        <button id="tabDonts" onclick="switchDoDont('donts')"
+          class="px-8 py-2.5 rounded-xl font-display font-semibold text-sm uppercase tracking-wide transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+          <i class="fa-solid fa-circle-xmark mr-1.5"></i> Don'ts
+        </button>
+      </div>
+    </div>
+
+    <!-- DO'S PANEL -->
+    <div id="panelDos" class="fade-in">
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-mask-face text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Wear an N95 Mask</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Use a certified N95 or N99 mask when stepping outdoors on high AQI days. Surgical masks alone do not filter fine PM2.5 particles.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-semibold">AQI &gt; 100</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-house-chimney-window text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Keep Windows Closed</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">On poor AQI days, keep doors and windows shut during peak traffic hours (7–10 AM and 5–8 PM) to reduce indoor pollution.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">AQI &gt; 200</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-seedling text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Grow Indoor Plants</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Plants like Peace Lily, Spider Plant, and Areca Palm naturally filter indoor air toxins like benzene, formaldehyde, and CO₂.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">Always</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-bicycle text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Use Public Transport or Cycle</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Reduce personal vehicular emissions by using buses, e-rickshaws, or cycling. Each petrol vehicle off the road drops local AQI measurably.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">Always</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-wind text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Use Air Purifiers Indoors</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Run a HEPA air purifier in bedrooms and study rooms during high-pollution periods. HEPA filters capture 99.97% of PM2.5 particles.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-semibold">AQI &gt; 150</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-droplet text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Stay Hydrated</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Drink at least 8–10 glasses of water daily to help your body flush out toxins absorbed through polluted air. Add tulsi or ginger for respiratory benefit.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">Always</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-clock text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Exercise During Low-AQI Hours</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">In Gwalior, early morning (before 7 AM) typically has lower AQI than evening. Plan outdoor workouts and walks accordingly.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">Daily habit</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-car-battery text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Service Your Vehicle Regularly</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">A properly tuned engine emits up to 40% fewer pollutants. Replace air filters and get PUC certificates on time. An old, poorly maintained engine is a rolling polluter.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">Every 6 months</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-green-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-mobile-screen text-green-600 dark:text-green-400 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Check AQI Before Stepping Out</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Make it a habit to check the AIR DEKHO dashboard every morning. Share the reading with elderly family members who may not check on their own.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">Every morning</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- DON'TS PANEL -->
+    <div id="panelDonts" class="fade-in hidden">
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-fire text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Burn Waste or Crop Stubble</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Open burning of garbage, dry leaves, or crop residue releases dense PM2.5 and toxic gases that can spike the city AQI by 50–100 points overnight.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Major polluter</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-person-running text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Exercise Outdoors on Severe AQI Days</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Heavy breathing during exercise forces 10× more air into your lungs. On days with AQI above 200, outdoor physical activity can do more harm than good.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">AQI &gt; 200</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-smoking text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Smoke Indoors</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Indoor smoking raises PM2.5 levels to 10× outdoor pollution. Combined with already poor outdoor AQI in Gwalior, this creates extremely hazardous indoor air for families.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Always avoid</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-car text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Idle Your Engine</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Idling for more than 60 seconds wastes fuel and releases CO and NOₓ directly into street-level air where pedestrians and children breathe. Switch off at red lights.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Always avoid</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-spray-can text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Use Chemical Sprays Indoors</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Aerosol sprays (air fresheners, pesticides, hairsprays) release VOCs that react with indoor air to form secondary pollutants. Use natural alternatives especially in small, unventilated rooms.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-semibold">Reduce use</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-dumpster-fire text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Use Coal or Wood for Cooking</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Solid fuel combustion indoors releases black carbon and carbon monoxide at dangerous concentrations. Switch to LPG or induction stoves to protect your family.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Always avoid</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-child text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Let Children Play Near Highways</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Traffic corridors like NH-44 and Shivpuri Road have pollution levels 3–5× higher than residential zones. Keep children's play areas away from major roads.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">High-risk group</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-bottle-droplet text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Ignore Symptoms</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">Persistent cough, itchy eyes, wheezing, or headaches on high-AQI days are warning signs. Don't dismiss them — seek medical advice promptly, especially for children and the elderly.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Act fast</span></div>
+        </div>
+
+        <div class="card rounded-2xl p-6 shadow-lg border-l-4 border-red-500">
+          <div class="flex items-start gap-4">
+            <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-ban text-red-500 text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-gray-900 dark:text-white mb-1">Don't Burst Firecrackers</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 font-body leading-relaxed">A single Diwali night of firecrackers can push Gwalior's AQI above 400 — into the hazardous zone. Celebrate with eco-friendly light shows and diyas instead.</p>
+            </div>
+          </div>
+          <div class="mt-4"><span class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">Festival alert</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Summary bar -->
+    <div class="mt-12 card rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-6 fade-in">
+      <div class="flex gap-6 flex-wrap justify-center sm:justify-start">
+        <div class="text-center">
+          <div class="text-3xl font-display font-bold text-green-600">9</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400 font-body mt-1">Protective Do's</div>
+        </div>
+        <div class="w-px bg-gray-200 dark:bg-gray-700 hidden sm:block"></div>
+        <div class="text-center">
+          <div class="text-3xl font-display font-bold text-red-500">9</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400 font-body mt-1">Harmful Don'ts</div>
+        </div>
+      </div>
+      <div class="flex-1 text-sm text-gray-600 dark:text-gray-400 font-body sm:border-l sm:pl-6 border-gray-200 dark:border-gray-700 text-center sm:text-left">
+        Small daily choices accumulate. If every household in Gwalior adopted just 3 of these Do's and eliminated 2 Don'ts, the city AQI could drop by an estimated <strong class="text-green-600 dark:text-green-400">15–25 points</strong> during peak winter months.
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<script>
+function switchDoDont(tab) {
+  const panelDos   = document.getElementById('panelDos');
+  const panelDonts = document.getElementById('panelDonts');
+  const tabDos     = document.getElementById('tabDos');
+  const tabDonts   = document.getElementById('tabDonts');
+  if (tab === 'dos') {
+    panelDos.classList.remove('hidden');
+    panelDonts.classList.add('hidden');
+    tabDos.className   = 'px-8 py-2.5 rounded-xl font-display font-semibold text-sm uppercase tracking-wide transition-all bg-green-600 text-white shadow';
+    tabDonts.className = 'px-8 py-2.5 rounded-xl font-display font-semibold text-sm uppercase tracking-wide transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200';
+  } else {
+    panelDos.classList.add('hidden');
+    panelDonts.classList.remove('hidden');
+    tabDonts.className = 'px-8 py-2.5 rounded-xl font-display font-semibold text-sm uppercase tracking-wide transition-all bg-red-500 text-white shadow';
+    tabDos.className   = 'px-8 py-2.5 rounded-xl font-display font-semibold text-sm uppercase tracking-wide transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200';
+  }
+}
+</script>
+
+<!-- ==============================
+     GO GREEN GWALIOR BANNER
+============================== -->
+<section class="go-green-banner py-20 px-4 text-white text-center">
+  <div class="max-w-4xl mx-auto relative z-10 fade-in">
+    <div class="text-xs font-display font-semibold uppercase tracking-widest text-green-300 mb-4">A Call to Action</div>
+    <h2 class="font-display font-bold text-5xl sm:text-6xl lg:text-7xl text-white mb-4 drop-shadow-2xl">GO GREEN GWALIOR</h2>
+    <p class="text-green-200 font-body text-lg max-w-xl mx-auto mb-8 leading-relaxed">
+      Every small action — planting a tree, carpooling, reporting bad air — adds up to a healthier city for our children and grandchildren.
+    </p>
+    <div class="flex flex-wrap justify-center gap-4">
+      <a href="#report" class="inline-flex items-center gap-2 px-8 py-4 bg-white text-green-800 font-display font-bold rounded-2xl hover:bg-green-50 transition-all hover:scale-105 shadow-xl uppercase tracking-wide">
+        <i class="fa-solid fa-pen-to-square"></i> Report Now
+      </a>
+      <a href="#aqi-map" class="inline-flex items-center gap-2 px-8 py-4 bg-transparent border-2 border-white/60 text-white font-display font-bold rounded-2xl hover:bg-white/10 transition-all hover:scale-105 uppercase tracking-wide">
+        <i class="fa-solid fa-magnifying-glass-chart"></i> Check AQI
+      </a>
+    </div>
+
+    <!-- Decorative leaf icons floating -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      <i class="fa-solid fa-leaf text-white opacity-5 text-9xl absolute -top-4 -left-8 rotate-12 spin-slow"></i>
+      <i class="fa-solid fa-seedling text-white opacity-5 text-7xl absolute bottom-0 right-10 -rotate-12"></i>
+    </div>
+  </div>
+</section>
+
+<!-- ==============================
+     FOOTER
+============================== -->
+<footer class="bg-gray-900 dark:bg-black text-gray-400 py-12 px-4">
+  <div class="max-w-7xl mx-auto">
+    <div class="grid md:grid-cols-3 gap-8 mb-10">
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center">
+            <i class="fa-solid fa-wind text-white text-sm"></i>
+          </div>
+          <div>
+            <div class="font-display font-bold text-xl text-white">AIR DEKHO</div>
+            <div class="text-xs text-green-400 font-body">Your Health Is Our Priority</div>
+          </div>
+        </div>
+        <p class="text-sm font-body text-gray-500 leading-relaxed">A citizen-powered air quality monitoring platform for Gwalior, Madhya Pradesh. Together we breathe cleaner.</p>
+      </div>
+      <div>
+        <h4 class="font-display font-semibold text-white uppercase tracking-wide mb-4 text-sm">Quick Links</h4>
+        <ul class="space-y-2 text-sm font-body">
+          <li><a href="#aqi-map" class="hover:text-green-400 transition-colors">AQI Monitor</a></li>
+          <li><a href="#report" class="hover:text-green-400 transition-colors">Report Air Quality</a></li>
+          <li><a href="#health" class="hover:text-green-400 transition-colors">Health Risks</a></li>
+          <li><a href="#advice" class="hover:text-green-400 transition-colors">Protection Advice</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="font-display font-semibold text-white uppercase tracking-wide mb-4 text-sm">AQI Scale Reference</h4>
+        <div class="space-y-1.5 text-xs font-mono">
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-green-500 flex-shrink-0"></span><span>0–50 · Good</span></div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-lime-400 flex-shrink-0"></span><span>51–100 · Satisfactory</span></div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-400 flex-shrink-0"></span><span>101–200 · Moderate / Poor</span></div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-orange-500 flex-shrink-0"></span><span>201–300 · Very Poor</span></div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500 flex-shrink-0"></span><span>301–400 · Severe</span></div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-violet-700 flex-shrink-0"></span><span>401–500 · Hazardous</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <p class="text-xs font-body text-gray-600">© 2025 AIR DEKHO — Gwalior. Made with ❤️ for a cleaner Madhya Pradesh.</p>
+      <div class="text-xs font-display font-bold uppercase tracking-widest text-green-600">GO GREEN GWALIOR 🌱</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ==============================
+     TOAST NOTIFICATION
+============================== -->
+<div class="toast" id="toast">
+  <div class="card rounded-2xl px-5 py-4 shadow-2xl flex items-center gap-4 border-l-4 border-green-500 min-w-[280px]">
+    <div class="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+      <i class="fa-solid fa-circle-check text-green-600 dark:text-green-400 text-lg" id="toastIcon"></i>
+    </div>
+    <div>
+      <div class="font-display font-bold text-gray-900 dark:text-white text-sm" id="toastTitle">Report Submitted!</div>
+      <div class="text-xs text-gray-500 dark:text-gray-400 font-body mt-0.5" id="toastMsg">Your data has been recorded.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==============================
+     JAVASCRIPT
+============================== -->
+<script>
+// ===================================================
+// DATA
+// ===================================================
+const AREAS = [
+  { id: 1, name: 'City Center',         aqi: 142, status: 'Poor',       icon: '🏙️' },
+  { id: 2, name: 'New City Center',     aqi: 118, status: 'Poor',       icon: '🏢' },
+  { id: 3, name: 'Lashkar',             aqi: 165, status: 'Poor',       icon: '🕌' },
+  { id: 4, name: 'Kampoo',              aqi: 88,  status: 'Satisfactory', icon: '🏘️' },
+  { id: 5, name: 'D.D. Nagar',          aqi: 72,  status: 'Satisfactory', icon: '🏡' },
+  { id: 6, name: 'Morar',               aqi: 195, status: 'Poor',       icon: '🏭' },
+  { id: 7, name: 'Vinay Nagar',         aqi: 55,  status: 'Satisfactory', icon: '🌿' },
+  { id: 8, name: 'Shivpuri Link Road',  aqi: 234, status: 'Very Poor',  icon: '🛣️' },
+  { id: 9, name: 'Jhansi Link Road',    aqi: 218, status: 'Very Poor',  icon: '🚗' },
+  { id:10, name: 'Sirol Road',          aqi: 98,  status: 'Satisfactory', icon: '🌾' },
+  { id:11, name: 'Gola Ka Mandir',      aqi: 41,  status: 'Good',       icon: '⛩️' },
+  { id:12, name: 'Tansen Nagar',        aqi: 63,  status: 'Satisfactory', icon: '🎵' },
+  { id:13, name: 'Govindpuri',          aqi: 311, status: 'Severe',     icon: '🏚️' },
+  { id:14, name: 'Anand Nagar',         aqi: 78,  status: 'Satisfactory', icon: '🌻' },
+];
+
+const ADVICE = {
+  good: {
+    title: 'Good Air Quality (0–50)',
+    color: '#22c55e',
+    bg: 'rgba(34,197,94,0.08)',
+    border: 'rgba(34,197,94,0.3)',
+    icon: '😊',
+    description: 'Air quality is considered satisfactory, and air pollution poses little or no risk.',
+    tips: [
+      { icon: '🏃', title: 'Exercise Freely', desc: 'Perfect time for outdoor runs, cycling, or morning yoga at Phool Bagh.' },
+      { icon: '🪟', title: 'Open Windows', desc: 'Let fresh air circulate through your home and office.' },
+      { icon: '🧒', title: 'Kids Can Play Outside', desc: 'Safe for all age groups. Encourage outdoor play and sports.' },
+      { icon: '🌱', title: 'Plant a Tree Today', desc: 'Good air days are perfect to get outdoors and plant saplings in your neighbourhood.' },
+    ]
+  },
+  moderate: {
+    title: 'Moderate Air Quality (51–100)',
+    color: '#facc15',
+    bg: 'rgba(250,204,21,0.08)',
+    border: 'rgba(250,204,21,0.3)',
+    icon: '😐',
+    description: 'Air quality is acceptable. Unusually sensitive individuals should consider reducing prolonged outdoor exertion.',
+    tips: [
+      { icon: '😷', title: 'Sensitive Groups, Take Care', desc: 'Asthma patients and elderly should limit prolonged outdoor exercise.' },
+      { icon: '💧', title: 'Stay Hydrated', desc: 'Drink extra water to help your body flush toxins.' },
+      { icon: '🚶', title: 'Short Walks OK', desc: 'Brief outdoor activity is fine. Avoid 1+ hour sessions near traffic.' },
+      { icon: '🌿', title: 'Indoor Plants Help', desc: 'Place air-purifying plants like snake plant and peace lily indoors.' },
+    ]
+  },
+  poor: {
+    title: 'Poor Air Quality (101–200)',
+    color: '#f97316',
+    bg: 'rgba(249,115,22,0.08)',
+    border: 'rgba(249,115,22,0.3)',
+    icon: '😷',
+    description: 'Members of sensitive groups may experience health effects. General public is less likely to be affected.',
+    tips: [
+      { icon: '🩺', title: 'Wear N95 Masks', desc: 'Use certified N95 masks outdoors. Regular cloth masks are insufficient at this level.' },
+      { icon: '🏠', title: 'Limit Outdoor Time', desc: 'Keep outdoor exposure to under 30 minutes. Reschedule morning jogs.' },
+      { icon: '💨', title: 'Use Air Purifiers', desc: 'Run HEPA air purifiers at home and office. Keep indoor AQI below 50.' },
+      { icon: '🚫', title: 'Avoid High-Traffic Areas', desc: 'Stay away from Lashkar and City Center market areas during peak hours.' },
+      { icon: '🫁', title: 'Inhaler Ready', desc: 'Asthma patients must carry rescue inhalers. Monitor symptoms closely.' },
+    ]
+  },
+  verypoor: {
+    title: 'Very Poor Air Quality (201–300)',
+    color: '#ef4444',
+    bg: 'rgba(239,68,68,0.08)',
+    border: 'rgba(239,68,68,0.3)',
+    icon: '🚨',
+    description: 'Health warnings of emergency conditions. The entire population is more likely to be affected.',
+    tips: [
+      { icon: '🏠', title: 'Stay Indoors', desc: 'Avoid going outside unless absolutely necessary. Work from home if possible.' },
+      { icon: '🔒', title: 'Seal Your Home', desc: 'Close all windows and doors. Use damp towels to block gaps.' },
+      { icon: '😷', title: 'Double Mask Up', desc: 'Mandatory N95 for any outdoor activity. Double masking recommended.' },
+      { icon: '📞', title: 'Call Elderly Relatives', desc: 'Check on elderly neighbours and relatives. Offer to fetch essentials for them.' },
+      { icon: '🚗', title: 'Use Carpools / Public Transport', desc: 'Every vehicle off the road helps. Avoid idling engines.' },
+      { icon: '🏥', title: 'Seek Medical Help Early', desc: 'Chest tightness or breathlessness? Visit doctor immediately, don\'t wait.' },
+    ]
+  },
+  severe: {
+    title: 'Severe / Hazardous (301+)',
+    color: '#7c3aed',
+    bg: 'rgba(124,58,237,0.08)',
+    border: 'rgba(124,58,237,0.3)',
+    icon: '☠️',
+    description: 'EMERGENCY CONDITIONS. Serious risk of respiratory failure for entire population. Immediate action required.',
+    tips: [
+      { icon: '🚨', title: 'Emergency — Stay Home', desc: 'Total lockdown of outdoor activities. Consider temporary relocation if sustained.' },
+      { icon: '🏥', title: 'Medical Alert', desc: 'Keep emergency contacts ready. Hospital helpline: 104. Ambulance: 108.' },
+      { icon: '😷', title: 'Full PPE Outdoors', desc: 'N99/P100 respirators mandatory. Regular N95 may be insufficient at 400+ AQI.' },
+      { icon: '🐕', title: 'Protect Pets Too', desc: 'Keep pets indoors. Severe air quality affects animals just as badly.' },
+      { icon: '📢', title: 'Alert Your Community', desc: 'Share AQI alerts on WhatsApp groups. Help neighbours who may not know.' },
+      { icon: '🌳', title: 'Report Burning', desc: 'If you see open burning or illegal smoke sources, call PCB helpline: 155305.' },
+    ]
+  }
+};
+
+// ===================================================
+// STATE
+// ===================================================
+let areaData = AREAS.map(a => ({ ...a })); // mutable copy
+let selectedAreaId = 1;
+let reportCount = 0;
+let currentAdviceLevel = 'good';
+let sortOrder = 'name';
+
+// ===================================================
+// INIT
+// ===================================================
+function init() {
+  populateDropdowns();
+  renderAreaList();
+  updateCityStats();
+  updateHeroStats();
+  const firstArea = areaData.find(a => a.id === selectedAreaId);
+  updateGauge(firstArea.aqi);
+  document.getElementById('heroAreaName').textContent = firstArea.name;
+  showAdvice('good');
+  initScrollObserver();
+  setTimeout(initLiveMap, 300);
+  initFirebase(); // 🔥 Connect to Firebase
+}
+
+// ===================================================
+// DROPDOWN POPULATION
+// ===================================================
+function populateDropdowns() {
+  const heroSel = document.getElementById('heroAreaSelect');
+  const reportSel = document.getElementById('reportArea');
+  areaData.forEach(area => {
+    heroSel.innerHTML += `<option value="${area.id}">${area.icon} ${area.name}</option>`;
+    reportSel.innerHTML += `<option value="${area.id}">${area.icon} ${area.name}</option>`;
+  });
+  heroSel.value = String(selectedAreaId);
+}
+
+// ===================================================
+// GAUGE
+// ===================================================
+function getAqiMeta(aqi) {
+  if (aqi <= 50)  return { label: 'Good',       color: '#22c55e', bg: '#f0fdf4', text: '#16a34a' };
+  if (aqi <= 100) return { label: 'Satisfactory',color: '#a3e635', bg: '#f7fee7', text: '#4d7c0f' };
+  if (aqi <= 200) return { label: 'Poor',        color: '#f97316', bg: '#fff7ed', text: '#c2410c' };
+  if (aqi <= 300) return { label: 'Very Poor',   color: '#ef4444', bg: '#fef2f2', text: '#b91c1c' };
+  return                 { label: 'Severe',      color: '#7c3aed', bg: '#f5f3ff', text: '#6d28d9' };
+}
+
+function aqiToNeedleDeg(aqi) {
+  // Maps 0-500 AQI to -90deg to +90deg (180 deg range)
+  const capped = Math.min(500, Math.max(0, aqi));
+  return -90 + (capped / 500) * 180;
+}
+
+function updateGauge(aqi, animate = true) {
+  const needle = document.getElementById('gaugeNeedle');
+  const valueEl = document.getElementById('gaugeValueDisplay');
+  const labelEl = document.getElementById('gaugeLabel');
+  const meta = getAqiMeta(aqi);
+  const deg = aqiToNeedleDeg(aqi);
+
+  if (animate) {
+    needle.style.transition = 'transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
+  } else {
+    needle.style.transition = 'none';
+  }
+  needle.style.transform = `rotate(${deg}deg)`;
+
+  // Animate number
+  const startVal = parseInt(valueEl.textContent) || 0;
+  const duration = animate ? 1000 : 0;
+  const step = (timestamp, start) => {
+    if (!start) start = timestamp;
+    const progress = Math.min((timestamp - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(startVal + (aqi - startVal) * eased);
+    valueEl.textContent = current;
+    if (progress < 1) requestAnimationFrame(ts => step(ts, start));
+    else valueEl.textContent = aqi;
+  };
+  if (animate) requestAnimationFrame(ts => step(ts, null));
+  else valueEl.textContent = aqi;
+
+  valueEl.style.color = meta.color;
+  labelEl.textContent = meta.label;
+  labelEl.style.background = meta.bg;
+  labelEl.style.color = meta.text;
+}
+
+// ===================================================
+// AREA SELECTION
+// ===================================================
+function selectAreaFromDropdown(val) {
+  if (!val) return;
+  const id = parseInt(val);
+  const area = areaData.find(a => a.id === id);
+  if (!area) return;
+  selectedAreaId = id;
+  document.getElementById('heroAreaName').textContent = area.name;
+  updateGauge(area.aqi);
+  // Scroll to area in list
+  const el = document.getElementById(`areaPill_${id}`);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.querySelectorAll('.area-row').forEach(r => r.classList.remove('bg-green-50','dark:bg-green-900/20'));
+    el.classList.add('bg-green-50','dark:bg-green-900/20');
+  }
+}
+
+function selectArea(id) {
+  const area = areaData.find(a => a.id === id);
+  if (!area) return;
+  selectedAreaId = id;
+  document.getElementById('heroAreaName').textContent = area.name;
+  document.getElementById('heroAreaSelect').value = String(id);
+  updateGauge(area.aqi);
+  // Highlight row
+  document.querySelectorAll('.area-row').forEach(r => r.classList.remove('bg-green-50','dark:bg-green-900/20'));
+  const el = document.getElementById(`areaPill_${id}`);
+  if (el) el.classList.add('bg-green-50','dark:bg-green-900/20');
+  // Smooth scroll to hero gauge on mobile
+  if (window.innerWidth < 768) {
+    document.querySelector('.hero-bg').scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+// ===================================================
+// AREA LIST RENDER
+// ===================================================
+function renderAreaList() {
+  const container = document.getElementById('areaList');
+  let sorted = [...areaData];
+  if (sortOrder === 'aqi-asc') sorted.sort((a, b) => a.aqi - b.aqi);
+  else if (sortOrder === 'aqi-desc') sorted.sort((a, b) => b.aqi - a.aqi);
+  else sorted.sort((a, b) => a.name.localeCompare(b.name));
+
+  container.innerHTML = sorted.map(area => {
+    const meta = getAqiMeta(area.aqi);
+    const barWidth = Math.min(100, (area.aqi / 500) * 100);
+    return `
+    <div id="areaPill_${area.id}" class="area-row px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${area.id === selectedAreaId ? 'bg-green-50 dark:bg-green-900/20' : ''}"
+      onclick="selectArea(${area.id})">
+      <span class="text-2xl flex-shrink-0">${area.icon}</span>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-display font-semibold text-gray-900 dark:text-white text-sm truncate">${area.name}</span>
+          <span class="font-mono font-bold text-sm flex-shrink-0" style="color:${meta.color}">${area.aqi}</span>
+        </div>
+        <div class="mt-1.5 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div class="aqi-bar-fill h-full rounded-full" style="width:${barWidth}%;background:${meta.color};"></div>
+        </div>
+        <div class="flex items-center justify-between mt-1">
+          <span class="text-xs font-body" style="color:${meta.color}">${meta.label}</span>
+          <span class="text-xs text-gray-400 font-mono">${area.status}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function sortAreas(val) {
+  sortOrder = val;
+  renderAreaList();
+}
+
+// ===================================================
+// CITY STATS
+// ===================================================
+function updateCityStats() {
+  let good = 0, moderate = 0, poor = 0;
+  let total = 0;
+  areaData.forEach(a => {
+    total += a.aqi;
+    if (a.aqi <= 100) good++;
+    else if (a.aqi <= 200) moderate++;
+    else poor++;
+  });
+  document.getElementById('cityGood').textContent = good;
+  document.getElementById('cityModerate').textContent = moderate;
+  document.getElementById('cityPoor').textContent = poor;
+}
+
+function updateHeroStats() {
+  const total = areaData.reduce((s, a) => s + a.aqi, 0);
+  const avg = Math.round(total / areaData.length);
+  document.getElementById('heroStatAvgAqi').textContent = avg;
+  document.getElementById('heroStatReports').textContent = reportCount;
+}
+
+// ===================================================
+// FIREBASE SETUP
+// ===================================================
+// ⚠️  REPLACE the values below with your own Firebase project config.
+//     Go to: Firebase Console → Your Project → Project Settings → Your Apps → SDK Setup
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyDAH9JQbysHmimWbFc9IxfVrfFGzBbrE8Y",
+  authDomain:        "air-dekho.firebaseapp.com",
+  projectId:         "air-dekho",
+  storageBucket:     "air-dekho.firebasestorage.app",
+  messagingSenderId: "31357278228",
+  appId:             "1:31357278228:web:fd4c7b13d67266da98ef01",
+  measurementId:     "G-205T34TCTL"
+};
+
+let db = null;
+let fbReady = false;
+
+function initFirebase() {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+
+    // Test connectivity with a lightweight ping
+    db.collection('reports').limit(1).get()
+      .then(() => {
+        fbReady = true;
+        setFbStatus('connected', '🔥 Firebase connected — reports save to cloud');
+        startRealtimeReports(); // start live listener
+      })
+      .catch(err => {
+        // Config not yet filled in — fall back to local mode gracefully
+        console.warn('Firebase not configured yet:', err.message);
+        setFbStatus('local', '💾 Local mode — add your Firebase config to enable cloud sync');
+      });
+  } catch(e) {
+    setFbStatus('local', '💾 Local mode — add your Firebase config to enable cloud sync');
+  }
+}
+
+function setFbStatus(state, msg) {
+  const dot  = document.getElementById('fbStatusDot');
+  const text = document.getElementById('fbStatusText');
+  if (!dot || !text) return;
+  text.textContent = msg;
+  dot.className = 'w-2 h-2 rounded-full ' + (
+    state === 'connected' ? 'bg-green-500 animate-pulse' :
+    state === 'saving'    ? 'bg-yellow-400 animate-pulse' :
+    state === 'error'     ? 'bg-red-500' :
+                            'bg-gray-400'
+  );
+}
+
+// Real-time listener: updates Recent Reports panel whenever Firestore changes
+function startRealtimeReports() {
+  if (!db) return;
+  db.collection('reports')
+    .orderBy('timestamp', 'desc')
+    .limit(10)
+    .onSnapshot(snapshot => {
+      const container = document.getElementById('recentReports');
+      if (snapshot.empty) return;
+
+      // Clear placeholder
+      const emptyEl = container.querySelector('.text-center');
+      if (emptyEl) emptyEl.remove();
+
+      // Clear and re-render all live reports
+      container.innerHTML = '';
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        renderReportCard(container, d.areaName, d.status, d.aqi, d.notes,
+          d.timestamp?.toDate ? d.timestamp.toDate() : new Date(), false);
+      });
+
+      // Count today's reports from Firebase
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      let todayCount = 0;
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        const ts = d.timestamp?.toDate ? d.timestamp.toDate() : null;
+        if (ts && ts >= todayStart) todayCount++;
+      });
+      reportCount = todayCount;
+      document.getElementById('heroStatReports').textContent = reportCount;
+
+      // Sync areaData AQI from latest reports per area
+      const latestPerArea = {};
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        if (!latestPerArea[d.areaId]) latestPerArea[d.areaId] = d.aqi;
+      });
+      Object.entries(latestPerArea).forEach(([areaId, aqi]) => {
+        const area = areaData.find(a => a.id === parseInt(areaId));
+        if (area) {
+          const newAqi = Math.round((area.aqi * 3 + aqi) / 4);
+          area.aqi = newAqi;
+        }
+      });
+      renderAreaList();
+      updateCityStats();
+      updateHeroStats();
+      if (leafletMap) renderMapMarkers();
+    }, err => {
+      console.warn('Realtime listener error:', err.message);
+    });
+}
+
+// ===================================================
+// REPORT FORM
+// ===================================================
+function updateSliderValue(val) {
+  const display = document.getElementById('sliderValueDisplay');
+  const meta = getAqiMeta(parseInt(val));
+  display.textContent = val;
+  display.style.color = meta.color;
+}
+
+async function submitReport() {
+  const areaId = parseInt(document.getElementById('reportArea').value);
+  const statusRadio = document.querySelector('input[name="airStatus"]:checked');
+  const aqiVal = parseInt(document.getElementById('aqiSlider').value);
+  const notes = document.getElementById('reportNotes').value.trim();
+
+  if (!areaId) { showToast('⚠️ Missing Field', 'Please select your area first.', 'warning'); return; }
+  if (!statusRadio) { showToast('⚠️ Missing Field', 'Please select current air status.', 'warning'); return; }
+
+  const area = areaData.find(a => a.id === areaId);
+  if (!area) return;
+
+  const btn = document.getElementById('submitBtn');
+  const btnIcon = document.getElementById('submitBtnIcon');
+  const btnText = document.getElementById('submitBtnText');
+
+  // Button loading state
+  btn.disabled = true;
+  btn.classList.add('opacity-80');
+  btnIcon.className = 'fa-solid fa-spinner fa-spin';
+  btnText.textContent = 'Saving…';
+
+  const reportPayload = {
+    areaId,
+    areaName:  area.name,
+    areaIcon:  area.icon,
+    status:    statusRadio.value,
+    aqi:       aqiVal,
+    notes,
+    city:      'Gwalior',
+    timestamp: firebase.firestore ? firebase.firestore.FieldValue.serverTimestamp() : new Date()
+  };
+
+  if (fbReady && db) {
+    // ---- CLOUD PATH: save to Firestore ----
+    try {
+      setFbStatus('saving', '📡 Saving to Firebase…');
+      await db.collection('reports').add(reportPayload);
+      setFbStatus('connected', '✅ Saved to Firebase cloud!');
+    } catch(err) {
+      console.error('Firestore write failed:', err);
+      setFbStatus('error', '❌ Cloud save failed — saved locally instead');
+      localSubmit(area, aqiVal, statusRadio.value, notes); // fallback
+    }
+  } else {
+    // ---- LOCAL FALLBACK PATH ----
+    localSubmit(area, aqiVal, statusRadio.value, notes);
+  }
+
+  reportCount++;
+  updateHeroStats();
+
+  // Reset form
+  btn.disabled = false;
+  btn.classList.remove('opacity-80');
+  btnIcon.className = 'fa-solid fa-paper-plane';
+  btnText.textContent = 'Submit Report';
+  document.getElementById('reportArea').value = '';
+  document.querySelectorAll('input[name="airStatus"]').forEach(r => r.checked = false);
+  document.getElementById('aqiSlider').value = 75;
+  updateSliderValue(75);
+  document.getElementById('reportNotes').value = '';
+}
+
+// Local-only submit (when Firebase not configured)
+function localSubmit(area, aqiVal, status, notes) {
+  const oldAqi = area.aqi;
+  const newAqi = Math.round((oldAqi * 3 + aqiVal) / 4);
+  area.aqi = newAqi;
+  if (selectedAreaId === area.id) updateGauge(newAqi);
+  addRecentReportLocal(area.name, area.icon, status, aqiVal, notes);
+  renderAreaList();
+  updateCityStats();
+  if (leafletMap) renderMapMarkers();
+  showToast('✅ Report Saved!', `${area.name} AQI updated to ${newAqi}.`, 'success');
+}
+
+function addRecentReportLocal(areaName, areaIcon, status, aqi, notes) {
+  const container = document.getElementById('recentReports');
+  const emptyEl = container.querySelector('.text-center');
+  if (emptyEl) emptyEl.remove();
+  renderReportCard(container, areaName, status, aqi, notes, new Date(), true);
+  while (container.children.length > 8) container.removeChild(container.lastChild);
+}
+
+function renderReportCard(container, areaName, status, aqi, notes, dateObj, prepend) {
+  const meta = getAqiMeta(aqi);
+  const time = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+
+  const item = document.createElement('div');
+  item.className = 'rounded-xl p-3 text-sm border border-gray-100 dark:border-gray-700 transition-all hover:bg-gray-50 dark:hover:bg-gray-800/40';
+  item.style.borderLeftWidth = '3px';
+  item.style.borderLeftColor = meta.color;
+  item.innerHTML = `
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <div class="font-display font-semibold text-gray-800 dark:text-gray-200 text-sm truncate">${areaName}</div>
+        <div class="text-xs text-gray-500 dark:text-gray-400 font-body mt-0.5">
+          ${status} · AQI <strong style="color:${meta.color}">${aqi}</strong>
+          <span class="ml-1 px-1.5 py-0.5 rounded text-xs font-display" style="background:${meta.bg || 'rgba(34,197,94,0.1)'};color:${meta.color}">${meta.label}</span>
+        </div>
+        ${notes ? `<div class="text-xs text-gray-400 mt-1 font-body italic truncate">"${notes.slice(0,60)}${notes.length>60?'…':''}"</div>` : ''}
+      </div>
+      <div class="text-right flex-shrink-0">
+        <div class="text-xs text-gray-400 font-mono">${time}</div>
+        <div class="text-xs text-gray-300 dark:text-gray-600 font-mono">${dateStr}</div>
+      </div>
+    </div>
+  `;
+  if (prepend) container.insertBefore(item, container.firstChild);
+  else container.appendChild(item);
+}
+
+// ===================================================
+// ADVICE TABS
+// ===================================================
+function showAdvice(level) {
+  currentAdviceLevel = level;
+  const data = ADVICE[level];
+  const panel = document.getElementById('advicePanel');
+
+  // Update tab styles
+  document.querySelectorAll('.aqi-tab-btn').forEach(btn => {
+    if (btn.dataset.level === level) {
+      btn.style.borderColor = data.color;
+      btn.style.color = data.color;
+      btn.style.background = data.bg;
+    } else {
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.background = '';
+      btn.classList.add('border-gray-200');
+    }
+  });
+
+  panel.innerHTML = `
+    <div class="card rounded-2xl overflow-hidden shadow-xl" style="border:2px solid ${data.border};">
+      <div class="p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 border-b border-gray-100 dark:border-gray-800" style="background:${data.bg}">
+        <div class="text-5xl flex-shrink-0">${data.icon}</div>
+        <div>
+          <h3 class="font-display font-bold text-xl text-gray-900 dark:text-white" style="color:${data.color}">${data.title}</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">${data.description}</p>
+        </div>
+      </div>
+      <div class="p-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        ${data.tips.map(tip => `
+          <div class="rounded-xl p-4 flex gap-3 items-start" style="background:${data.bg}; border: 1px solid ${data.border}">
+            <span class="text-2xl flex-shrink-0">${tip.icon}</span>
+            <div>
+              <div class="font-display font-semibold text-gray-800 dark:text-gray-100 text-sm">${tip.title}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 font-body mt-0.5 leading-relaxed">${tip.desc}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ===================================================
+// THEME TOGGLE
+// ===================================================
+function toggleTheme() {
+  const html = document.documentElement;
+  const icon = document.getElementById('toggleIcon');
+  if (html.classList.contains('dark')) {
+    html.classList.remove('dark');
+    icon.className = 'fa-solid fa-sun text-yellow-400';
+    localStorage.setItem('theme', 'light');
+  } else {
+    html.classList.add('dark');
+    icon.className = 'fa-solid fa-moon text-blue-300';
+    localStorage.setItem('theme', 'dark');
+  }
+}
+
+// Load saved theme
+(function() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+    document.addEventListener('DOMContentLoaded', () => {
+      const icon = document.getElementById('toggleIcon');
+      if (icon) icon.className = 'fa-solid fa-moon text-blue-300';
+    });
+  }
+})();
+
+// ===================================================
+// MOBILE MENU
+// ===================================================
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  const icon = document.getElementById('mobileMenuIcon');
+  menu.classList.toggle('hidden');
+  icon.className = menu.classList.contains('hidden') ? 'fa-solid fa-bars text-xl' : 'fa-solid fa-xmark text-xl';
+}
+function closeMobileMenu() {
+  document.getElementById('mobileMenu').classList.add('hidden');
+  document.getElementById('mobileMenuIcon').className = 'fa-solid fa-bars text-xl';
+}
+
+// ===================================================
+// TOAST
+// ===================================================
+function showToast(title, msg, type = 'success') {
+  const toast = document.getElementById('toast');
+  const toastTitle = document.getElementById('toastTitle');
+  const toastMsg = document.getElementById('toastMsg');
+  const toastIcon = document.getElementById('toastIcon');
+  const toastCard = toast.querySelector('.card');
+
+  toastTitle.textContent = title;
+  toastMsg.textContent = msg;
+
+  if (type === 'warning') {
+    toastCard.style.borderLeftColor = '#f97316';
+    toastIcon.className = 'fa-solid fa-circle-exclamation text-orange-500 text-lg';
+  } else {
+    toastCard.style.borderLeftColor = '#22c55e';
+    toastIcon.className = 'fa-solid fa-circle-check text-green-600 dark:text-green-400 text-lg';
+  }
+
+  toast.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+// ===================================================
+// SCROLL OBSERVER (fade-in animations)
+// ===================================================
+function initScrollObserver() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+}
+
+// ===================================================
+// START
+// ===================================================
+// ===================================================
+// LIVE SATELLITE AQI MAP (Leaflet)
+// ===================================================
+const AREA_COORDS = {
+  1:  { lat: 26.2124, lng: 78.1772 }, // City Center
+  2:  { lat: 26.2210, lng: 78.1850 }, // New City Center
+  3:  { lat: 26.2050, lng: 78.1650 }, // Lashkar
+  4:  { lat: 26.2180, lng: 78.1940 }, // Kampoo
+  5:  { lat: 26.2310, lng: 78.2050 }, // D.D. Nagar
+  6:  { lat: 26.2350, lng: 78.2280 }, // Morar
+  7:  { lat: 26.2450, lng: 78.1780 }, // Vinay Nagar
+  8:  { lat: 26.1850, lng: 78.1450 }, // Shivpuri Link Road
+  9:  { lat: 26.1950, lng: 78.2350 }, // Jhansi Link Road
+  10: { lat: 26.2600, lng: 78.2150 }, // Sirol Road
+  11: { lat: 26.2020, lng: 78.1850 }, // Gola Ka Mandir
+  12: { lat: 26.2280, lng: 78.1680 }, // Tansen Nagar
+  13: { lat: 26.1780, lng: 78.1950 }, // Govindpuri
+  14: { lat: 26.2400, lng: 78.1550 }, // Anand Nagar
+};
+
+let leafletMap = null;
+let satelliteLayer = null;
+let streetLayer = null;
+let currentLayerMode = 'satellite';
+let mapMarkers = [];
+let mapCircles = [];
+
+function aqiColor(aqi) {
+  if (aqi <= 50)  return '#22c55e';
+  if (aqi <= 100) return '#a3e635';
+  if (aqi <= 200) return '#f97316';
+  if (aqi <= 300) return '#ef4444';
+  return '#7c3aed';
+}
+function aqiLabel(aqi) {
+  if (aqi <= 50)  return 'Good';
+  if (aqi <= 100) return 'Satisfactory';
+  if (aqi <= 200) return 'Poor';
+  if (aqi <= 300) return 'Very Poor';
+  return 'Severe';
+}
+
+function initLiveMap() {
+  if (leafletMap) return;
+
+  leafletMap = L.map('liveAqiMap', {
+    center: [26.215, 78.185],
+    zoom: 12,
+    zoomControl: true,
+    attributionControl: false
+  });
+
+  // Satellite (ESRI World Imagery)
+  satelliteLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, attribution: 'ESRI' }
+  );
+
+  // Street (OpenStreetMap)
+  streetLayer = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 19, attribution: 'OSM' }
+  );
+
+  satelliteLayer.addTo(leafletMap);
+
+  // Render all markers
+  renderMapMarkers();
+
+  // Start live refresh timer
+  setInterval(liveMapRefresh, 30000);
+  updateMapTimestamp();
+}
+
+function renderMapMarkers() {
+  // Clear old markers and circles
+  mapMarkers.forEach(m => leafletMap.removeLayer(m));
+  mapCircles.forEach(c => leafletMap.removeLayer(c));
+  mapMarkers = [];
+  mapCircles = [];
+
+  areaData.forEach(area => {
+    const coords = AREA_COORDS[area.id];
+    if (!coords) return;
+
+    const color = aqiColor(area.aqi);
+    const label = aqiLabel(area.aqi);
+    const circleRadius = 400 + (area.aqi / 500) * 700;
+
+    // Heatzone circle
+    const circle = L.circle([coords.lat, coords.lng], {
+      radius: circleRadius,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.15,
+      weight: 1,
+      opacity: 0.35
+    }).addTo(leafletMap);
+    mapCircles.push(circle);
+
+    // Custom marker HTML
+    const iconHtml = `
+      <div class="aqi-pin">
+        <div style="position:relative;display:inline-block;">
+          <div class="aqi-pin-pulse" style="background:${color};"></div>
+          <div class="aqi-pin-dot" style="background:${color};" onclick="selectArea(${area.id})">${area.aqi}</div>
+        </div>
+        <div class="aqi-pin-name">${area.name}</div>
+      </div>`;
+
+    const icon = L.divIcon({
+      className: 'aqi-marker-label',
+      html: iconHtml,
+      iconSize: [80, 62],
+      iconAnchor: [40, 44]
+    });
+
+    const marker = L.marker([coords.lat, coords.lng], { icon }).addTo(leafletMap);
+
+    // Popup
+    const pct = Math.min(100, (area.aqi / 500) * 100);
+    marker.bindPopup(`
+      <div style="min-width:160px;">
+        <div class="map-popup-title">${area.icon} ${area.name}</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
+          <div class="map-popup-aqi" style="color:${color}">${area.aqi}</div>
+          <div>
+            <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;color:${color}">${label}</div>
+            <div class="map-popup-label">AQI Index</div>
+          </div>
+        </div>
+        <div class="map-popup-bar">
+          <div class="map-popup-bar-thumb" style="left:${pct}%;border-color:${color};"></div>
+        </div>
+        <div style="margin-top:8px;font-size:10px;color:#86efac;font-family:'Share Tech Mono',monospace;">
+          📡 Last scan: ${new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}
+        </div>
+        <button onclick="selectArea(${area.id}); leafletMap.closePopup();"
+          style="margin-top:8px;width:100%;padding:5px;background:#16a34a;border:none;border-radius:6px;
+          color:#fff;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:0.06em;
+          text-transform:uppercase;cursor:pointer;">View Details</button>
+      </div>`, { maxWidth: 200 });
+
+    mapMarkers.push(marker);
+  });
+}
+
+function liveMapRefresh() {
+  // Simulate slight AQI fluctuations (±5–15) for live feel
+  areaData.forEach(area => {
+    const delta = Math.floor(Math.random() * 20) - 8;
+    area.aqi = Math.max(10, Math.min(499, area.aqi + delta));
+  });
+  renderMapMarkers();
+  updateCityStats();
+  updateHeroStats();
+  renderAreaList();
+  updateMapTimestamp();
+  // Update gauge if current area affected
+  const sel = areaData.find(a => a.id === selectedAreaId);
+  if (sel) updateGauge(sel.aqi);
+}
+
+function updateMapTimestamp() {
+  const el = document.getElementById('mapLastUpdate');
+  if (el) {
+    const now = new Date();
+    el.textContent = 'Live · ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+}
+
+function setMapLayer(mode) {
+  currentLayerMode = mode;
+  document.getElementById('btnSatellite').classList.toggle('active', mode === 'satellite');
+  document.getElementById('btnStreet').classList.toggle('active', mode === 'street');
+  if (mode === 'satellite') {
+    if (leafletMap.hasLayer(streetLayer)) leafletMap.removeLayer(streetLayer);
+    if (!leafletMap.hasLayer(satelliteLayer)) satelliteLayer.addTo(leafletMap);
+  } else {
+    if (leafletMap.hasLayer(satelliteLayer)) leafletMap.removeLayer(satelliteLayer);
+    if (!leafletMap.hasLayer(streetLayer)) streetLayer.addTo(leafletMap);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
+// ===================================================
+// WEEKLY REPORT CHARTS
+// ===================================================
+(function initWeeklyCharts() {
+
+  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  // Generate realistic 7-day simulated AQI data per area
+  function seedRand(seed) {
+    let s = seed;
+    return () => { s = (s * 16807 + 0) % 2147483647; return (s - 1) / 2147483646; };
+  }
+
+  const CHART_AREAS = [
+    { id:1,  name:'City Center',       base:145, icon:'🏙️' },
+    { id:3,  name:'Lashkar',           base:130, icon:'🕌' },
+    { id:6,  name:'Morar',             base:95,  icon:'🌿' },
+    { id:5,  name:'D.D. Nagar',        base:108, icon:'🏘️' },
+    { id:8,  name:'Shivpuri Link Rd',  base:78,  icon:'🛣️' },
+    { id:11, name:'Gola Ka Mandir',    base:160, icon:'⛪' },
+    { id:14, name:'Anand Nagar',       base:88,  icon:'🌳' },
+  ];
+
+  function genWeekData(base, seed) {
+    const rand = seedRand(seed);
+    return DAYS.map(() => Math.max(20, Math.min(400, Math.round(base + (rand()-0.5)*60))));
+  }
+
+  const weekData = CHART_AREAS.map((a,i) => ({
+    ...a,
+    days: genWeekData(a.base, a.id * 37 + i * 13),
+  }));
+
+  function aqiColor(aqi) {
+    if (aqi <= 50)  return '#22c55e';
+    if (aqi <= 100) return '#a3e635';
+    if (aqi <= 200) return '#f97316';
+    if (aqi <= 300) return '#ef4444';
+    return '#7c3aed';
+  }
+  function aqiLabel(aqi) {
+    if (aqi <= 50)  return 'Good';
+    if (aqi <= 100) return 'Satisfactory';
+    if (aqi <= 200) return 'Moderate';
+    if (aqi <= 300) return 'Poor';
+    return 'Very Poor';
+  }
+
+  const LINE_COLORS = ['#22c55e','#f97316','#3b82f6','#f59e0b','#a855f7','#ef4444','#14b8a6'];
+
+  // --- Week label ---
+  const today = new Date();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay()+6)%7));
+  const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+  const fmt = d => d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+  document.getElementById('weekLabel').textContent = fmt(monday) + ' – ' + fmt(sunday);
+
+  // --- Summary pills ---
+  const allVals = weekData.flatMap(a => a.days);
+  const cityAvg = Math.round(allVals.reduce((s,v)=>s+v,0)/allVals.length);
+  const worst   = weekData.reduce((best,a) => {
+    const avg = Math.round(a.days.reduce((s,v)=>s+v,0)/a.days.length);
+    return avg > best.avg ? {name:a.name,avg} : best;
+  }, {name:'',avg:0});
+  const best = weekData.reduce((b,a) => {
+    const avg = Math.round(a.days.reduce((s,v)=>s+v,0)/a.days.length);
+    return avg < b.avg ? {name:a.name,avg} : b;
+  }, {name:'',avg:999});
+
+  const pills = [
+    { label:'City Week Avg', val: cityAvg, color: aqiColor(cityAvg) },
+    { label:'Cleanest Area', val: best.name, color:'#22c55e' },
+    { label:'Most Polluted', val: worst.name, color:'#ef4444' },
+  ];
+  document.getElementById('weekSummaryPills').innerHTML = pills.map(p=>`
+    <div class="card rounded-xl px-4 py-2 flex items-center gap-2 text-sm">
+      <span class="font-body text-gray-500 dark:text-gray-400">${p.label}:</span>
+      <span class="font-display font-bold" style="color:${p.color}">${p.val}</span>
+    </div>`).join('');
+
+  // --- Detect dark mode for chart text ---
+  function isDark() { return document.documentElement.classList.contains('dark'); }
+  function chartTextColor() { return isDark() ? '#9ca3af' : '#6b7280'; }
+  function chartGridColor() { return isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'; }
+
+  const commonScales = () => ({
+    x: { ticks:{ color: chartTextColor(), font:{family:'Rajdhani',size:12} }, grid:{ color: chartGridColor() } },
+    y: { ticks:{ color: chartTextColor(), font:{family:'Share Tech Mono',size:11} }, grid:{ color: chartGridColor() } }
+  });
+  const commonLegend = { labels:{ color: chartTextColor(), font:{family:'Rajdhani',size:12}, boxWidth:12, padding:14 } };
+
+  // --- Chart 1: Line trend ---
+  let visibleAreas = new Set(CHART_AREAS.map(a=>a.id));
+
+  const trendCtx = document.getElementById('chartWeeklyTrend').getContext('2d');
+  const trendChart = new Chart(trendCtx, {
+    type: 'line',
+    data: {
+      labels: DAYS,
+      datasets: weekData.map((a,i) => ({
+        label: a.name,
+        data: a.days,
+        borderColor: LINE_COLORS[i],
+        backgroundColor: LINE_COLORS[i]+'22',
+        borderWidth: 2.5,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        tension: 0.4,
+        fill: false,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { ...commonLegend, position:'bottom' },
+        tooltip: {
+          backgroundColor: isDark()?'rgba(10,20,14,0.95)':'rgba(255,255,255,0.97)',
+          titleColor: isDark()?'#e2f5ea':'#111827',
+          bodyColor: isDark()?'#9ca3af':'#6b7280',
+          borderColor: isDark()?'rgba(34,197,94,0.3)':'rgba(0,0,0,0.1)',
+          borderWidth: 1,
+          titleFont:{family:'Rajdhani',size:13,weight:'bold'},
+          bodyFont:{family:'Share Tech Mono',size:11},
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: AQI ${ctx.parsed.y}` }
+        }
+      },
+      scales: commonScales()
+    }
+  });
+
+  // Toggle area buttons
+  const toggleWrap = document.getElementById('trendAreaToggle');
+  weekData.forEach((a,i) => {
+    const btn = document.createElement('button');
+    btn.textContent = a.name.split(' ')[0];
+    btn.style.cssText = `
+      padding:3px 10px; border-radius:999px; font-family:'Rajdhani',sans-serif;
+      font-weight:600; font-size:11px; letter-spacing:0.05em; text-transform:uppercase;
+      border:2px solid ${LINE_COLORS[i]}; color:${LINE_COLORS[i]};
+      background:${LINE_COLORS[i]}22; cursor:pointer; transition:all 0.2s;`;
+    btn.dataset.idx = i;
+    btn.addEventListener('click', () => {
+      const ds = trendChart.data.datasets[i];
+      const hidden = ds.hidden;
+      ds.hidden = !hidden;
+      btn.style.opacity = hidden ? '1' : '0.4';
+      trendChart.update();
+    });
+    toggleWrap.appendChild(btn);
+  });
+
+  // --- Chart 2: Horizontal bar ---
+  const avgByArea = weekData.map(a => ({
+    name: a.name,
+    avg:  Math.round(a.days.reduce((s,v)=>s+v,0)/a.days.length)
+  })).sort((a,b)=>b.avg-a.avg);
+
+  const barCtx = document.getElementById('chartAreaAvg').getContext('2d');
+  new Chart(barCtx, {
+    type: 'bar',
+    data: {
+      labels: avgByArea.map(a => a.name),
+      datasets: [{
+        label: 'Avg AQI',
+        data: avgByArea.map(a => a.avg),
+        backgroundColor: avgByArea.map(a => aqiColor(a.avg)+'cc'),
+        borderColor:     avgByArea.map(a => aqiColor(a.avg)),
+        borderWidth: 1.5,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display:false },
+        tooltip: {
+          callbacks: { label: ctx => ` AQI ${ctx.parsed.x} — ${aqiLabel(ctx.parsed.x)}` },
+          backgroundColor: isDark()?'rgba(10,20,14,0.95)':'rgba(255,255,255,0.97)',
+          titleColor: isDark()?'#e2f5ea':'#111827',
+          bodyColor: isDark()?'#9ca3af':'#6b7280',
+          borderColor: isDark()?'rgba(34,197,94,0.3)':'rgba(0,0,0,0.1)',
+          borderWidth:1,
+          titleFont:{family:'Rajdhani',size:13,weight:'bold'},
+          bodyFont:{family:'Share Tech Mono',size:11},
+        }
+      },
+      scales: {
+        x: { ...commonScales().x, min:0, max:400, ticks:{...commonScales().x.ticks, stepSize:100} },
+        y: { ...commonScales().y, ticks:{...commonScales().y.ticks, font:{family:'Rajdhani',size:11}} }
+      }
+    }
+  });
+
+  // --- Chart 3: Doughnut distribution ---
+  const cats = [
+    {label:'Good (0–50)',       color:'#22c55e', min:0,   max:50},
+    {label:'Satisfactory',      color:'#a3e635', min:51,  max:100},
+    {label:'Moderate',          color:'#f97316', min:101, max:200},
+    {label:'Poor',              color:'#ef4444', min:201, max:300},
+    {label:'Very Poor (300+)',  color:'#7c3aed', min:301, max:999},
+  ];
+  const counts = cats.map(c => allVals.filter(v => v>=c.min && v<=c.max).length);
+  const total  = counts.reduce((s,v)=>s+v,0);
+
+  const donutCtx = document.getElementById('chartDistribution').getContext('2d');
+  new Chart(donutCtx, {
+    type: 'doughnut',
+    data: {
+      labels: cats.map(c=>c.label),
+      datasets:[{ data:counts, backgroundColor:cats.map(c=>c.color+'cc'), borderColor:cats.map(c=>c.color), borderWidth:2, hoverOffset:8 }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins: {
+        legend:{display:false},
+        tooltip:{
+          callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed} readings (${Math.round(ctx.parsed/total*100)}%)` },
+          backgroundColor: isDark()?'rgba(10,20,14,0.95)':'rgba(255,255,255,0.97)',
+          titleColor: isDark()?'#e2f5ea':'#111827',
+          bodyColor: isDark()?'#9ca3af':'#6b7280',
+          borderColor: isDark()?'rgba(34,197,94,0.3)':'rgba(0,0,0,0.1)',
+          borderWidth:1,
+          titleFont:{family:'Rajdhani',size:13,weight:'bold'},
+          bodyFont:{family:'Share Tech Mono',size:11},
+        }
+      }
+    }
+  });
+
+  document.getElementById('distLegend').innerHTML = cats.map((c,i)=>`
+    <div class="flex items-center gap-2">
+      <span style="width:12px;height:12px;border-radius:3px;background:${c.color};display:inline-block;flex-shrink:0;"></span>
+      <span class="text-gray-600 dark:text-gray-300">${c.label}</span>
+      <span class="font-mono font-bold ml-auto" style="color:${c.color}">${Math.round(counts[i]/total*100)}%</span>
+    </div>`).join('');
+
+  // --- Heatmap table ---
+  const heatAreas = weekData.slice(0,6);
+  const table = document.getElementById('aqiHeatmap');
+
+  const thead = document.createElement('thead');
+  thead.innerHTML = `<tr>
+    <th class="text-left py-2 px-3 text-gray-400 dark:text-gray-500 font-display uppercase tracking-wide font-semibold" style="min-width:120px">Area</th>
+    ${DAYS.map(d=>`<th class="py-2 px-2 text-center text-gray-400 dark:text-gray-500 font-display uppercase tracking-wide font-semibold">${d}</th>`).join('')}
+    <th class="py-2 px-3 text-center text-gray-400 dark:text-gray-500 font-display uppercase tracking-wide font-semibold">Avg</th>
+  </tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  heatAreas.forEach(area => {
+    const avg = Math.round(area.days.reduce((s,v)=>s+v,0)/area.days.length);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="py-2 px-3 font-display font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">${area.icon} ${area.name}</td>
+      ${area.days.map(v => {
+        const c = aqiColor(v);
+        return `<td class="py-1.5 px-2 text-center cursor-default rounded" title="${aqiLabel(v)}: ${v}"
+          style="background:${c}22;color:${c};font-weight:700;font-size:12px;border-radius:6px;">${v}</td>`;
+      }).join('')}
+      <td class="py-1.5 px-3 text-center font-bold rounded" style="background:${aqiColor(avg)}33;color:${aqiColor(avg)};font-size:12px;">${avg}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  // Add nav link
+  const navLinks = document.querySelector('.hidden.md\\:flex.items-center.gap-8');
+  if (navLinks && !document.querySelector('[href="#weekly-report"]')) {
+    const link = document.createElement('a');
+    link.href = '#weekly-report';
+    link.className = 'nav-link text-gray-700 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400';
+    link.textContent = 'Weekly';
+    navLinks.insertBefore(link, navLinks.children[1]);
+  }
+
+})();
+</script>
+</body>
+</html>
